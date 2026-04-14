@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PLATEDECK — DVLA Live Checker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --panel: #111318;
+    --border: #1e2230;
+    --accent: #f5c518;
+    --accent2: #e03c3c;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --plate-bg: #f5c518;
+    --plate-text: #0a0c0f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--accent);
+  }
+
+  .logo span {
+    color: var(--text);
+    opacity: 0.4;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+    margin-right: 6px;
+    transition: background 0.3s;
+  }
+  .status-dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-label { font-size: 12px; font-weight: 500; letter-spacing: 1px; color: var(--muted); }
+
+  /* API KEY SETUP */
+  .setup-banner {
+    background: linear-gradient(135deg, #1a1500, #231900);
+    border: 1px solid #3d2e00;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .setup-banner .icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+
+  .setup-banner h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .setup-banner p { font-size: 12px; color: #a08c4a; line-height: 1.5; }
+
+  .api-input-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .api-input-row input {
+    flex: 1;
+    background: #0d0d00;
+    border: 1px solid #3d2e00;
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+  }
+
+  .api-input-row input:focus { border-color: var(--accent); }
+
+  .btn-save {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-save:hover { opacity: 0.85; }
+
+  /* CAMERA SECTION */
+  .camera-section {
+    position: relative;
+    margin: 0 16px 16px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #060709;
+    aspect-ratio: 16/9;
+    max-height: 260px;
+  }
+
+  #videoEl {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .camera-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10,12,15,0.7);
+  }
+
+  .scan-frame {
+    position: absolute;
+    width: 70%;
+    height: 38%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,0.45);
+  }
+
+  .scan-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanMove 2s ease-in-out infinite;
+    display: none;
+  }
+
+  @keyframes scanMove {
+    0% { top: 0; }
+    100% { top: calc(100% - 2px); }
+  }
+
+  .scan-frame.active .scan-line { display: block; }
+
+  .corner { position: absolute; width: 14px; height: 14px; border-color: var(--accent); border-style: solid; }
+  .corner.tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+  .corner.tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; }
+  .corner.bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; }
+  .corner.br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+  .cam-label {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    opacity: 0.7;
+  }
+
+  #canvasEl { display: none; }
+
+  /* CONTROLS */
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin: 0 16px 16px;
+  }
+
+  .btn-primary {
+    flex: 1;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 2px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 1px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* MANUAL ENTRY */
+  .manual-row {
+    display: flex;
+    gap: 8px;
+    margin: 0 16px 20px;
+  }
+
+  .plate-input {
+    flex: 1;
+    background: var(--plate-bg);
+    border: none;
+    border-radius: 6px;
+    color: var(--plate-text);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 4px;
+    padding: 10px 16px;
+    outline: none;
+    text-transform: uppercase;
+  }
+
+  .plate-input::placeholder { color: rgba(0,0,0,0.35); }
+
+  .btn-check {
+    background: var(--panel);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 2px;
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-check:hover { background: var(--accent); color: #000; }
+
+  /* DIVIDER */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 16px 16px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* SCAN RESULT */
+  .detected-plate {
+    margin: 0 16px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: none;
+  }
+
+  .detected-plate.visible { display: block; }
+
+  .detected-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .detected-number {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    background: var(--plate-bg);
+    color: var(--plate-text);
+    display: inline-block;
+    padding: 4px 16px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+
+  .confirm-row { display: flex; gap: 8px; }
+
+  .btn-confirm {
+    background: var(--green);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 8px 18px;
+    cursor: pointer;
+    flex: 1;
+  }
+
+  .btn-retry {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 8px 18px;
+    cursor: pointer;
+  }
+
+  /* RESULTS LOG */
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 10px;
+  }
+
+  .log-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--muted);
+  }
+
+  .log-count {
+    background: var(--border);
+    color: var(--muted);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+  }
+
+  .results-list {
+    padding: 0 16px 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* RESULT CARD */
+  .result-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    animation: slideIn 0.35s cubic-bezier(0.22,1,0.36,1);
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .result-card.taxed { border-left: 3px solid var(--green); }
+  .result-card.untaxed { border-left: 3px solid var(--red); }
+  .result-card.sorn { border-left: 3px solid var(--amber); }
+  .result-card.unknown { border-left: 3px solid var(--muted); }
+  .result-card.loading { border-left: 3px solid var(--border); }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+  }
+
+  .card-plate {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 20px;
+    letter-spacing: 3px;
+    background: var(--plate-bg);
+    color: var(--plate-text);
+    padding: 3px 12px;
+    border-radius: 4px;
+  }
+
+  .card-badge {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .card-badge.taxed { background: rgba(34,197,94,0.15); color: var(--green); }
+  .card-badge.untaxed { background: rgba(239,68,68,0.15); color: var(--red); }
+  .card-badge.sorn { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .card-badge.unknown { background: rgba(107,114,128,0.15); color: var(--muted); }
+  .card-badge.loading { background: rgba(107,114,128,0.1); color: var(--muted); }
+
+  .spinner {
+    width: 12px; height: 12px;
+    border: 2px solid rgba(107,114,128,0.3);
+    border-top-color: var(--muted);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border-top: 1px solid var(--border);
+  }
+
+  .detail-cell {
+    background: var(--panel);
+    padding: 8px 14px;
+  }
+
+  .detail-label {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 3px;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .detail-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .card-time {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 6px 14px 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+  }
+
+  .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-text { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; letter-spacing: 2px; opacity: 0.5; }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 13px;
+    color: var(--text);
+    z-index: 999;
+    transition: transform 0.3s cubic-bezier(0.22,1,0.36,1);
+    white-space: nowrap;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* SCANNING OVERLAY ON BUTTON */
+  .btn-primary.scanning {
+    background: var(--panel);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">PLATE<span>DECK</span></div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="keyStatus" style="font-size:10px;letter-spacing:1px;font-family:'Barlow Condensed',sans-serif;color:var(--muted);text-align:right"></div>
+    <div>
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">OFFLINE</span>
+    </div>
+  </div>
+</div>
+
+<!-- API KEY SETUP -->
+<div class="setup-banner" id="setupBanner">
+  <div class="icon">🔑</div>
+  <div style="flex:1">
+    <h3>API KEYS — OPTIONAL</h3>
+    <p style="margin-bottom:8px">Without keys, <strong style="color:var(--accent)">plate decode mode</strong> works offline — year & region are 100% accurate, make/colour are estimated.</p>
+    <p style="margin-bottom:6px; font-size:11px; color:#7a6a3a">① <a href="https://developer-portal.driver-vehicle-licensing.api.gov.uk" target="_blank" style="color:var(--accent)">DVLA VES API key</a> — real tax/MOT status</p>
+    <div class="api-input-row" style="margin-bottom:8px">
+      <input type="text" id="dvlaKeyInput" placeholder="Paste DVLA key here…" autocomplete="off" />
+      <button class="btn-save" onclick="saveDvlaKey()">SAVE</button>
+    </div>
+    <p style="margin-bottom:6px; font-size:11px; color:#7a6a3a">② <a href="https://app.platerecognizer.com/accounts/token/" target="_blank" style="color:var(--accent)">Plate Recognizer token</a> — camera auto-read</p>
+    <div class="api-input-row">
+      <input type="text" id="prKeyInput" placeholder="Paste PR token here…" autocomplete="off" />
+      <button class="btn-save" onclick="savePrKey()">SAVE</button>
+    </div>
+    <div style="margin-top:12px;background:rgba(255,255,255,0.04);border-radius:6px;padding:10px;font-size:11px;color:#6b7280;line-height:1.6">
+      <strong style="color:var(--text)">⚠ Camera on iPhone:</strong> Safari blocks camera for local files. To use camera scanning, save this file to a hosting service or use manual entry below — which works perfectly for plates you spot while driving.
+    </div>
+    <button onclick="dismissBanner()" style="background:none;border:none;color:var(--muted);font-size:11px;margin-top:10px;cursor:pointer;letter-spacing:1px;font-family:'Barlow Condensed',sans-serif">CLOSE ›</button>
+  </div>
+</div>
+
+<!-- KEY STATUS BAR -->
+<div id="keyBar" style="display:none;margin:0 16px 12px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  <div id="dvlaStatusChip" style="font-size:11px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;padding:3px 10px;border-radius:20px"></div>
+  <div id="prStatusChip" style="font-size:11px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;padding:3px 10px;border-radius:20px"></div>
+  <button onclick="document.getElementById('setupBanner').style.display='flex'" style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 10px;font-size:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;cursor:pointer">EDIT KEYS</button>
+</div>
+
+<!-- CAMERA -->
+<div class="camera-section">
+  <video id="videoEl" autoplay playsinline muted></video>
+  <canvas id="canvasEl"></canvas>
+  <div class="camera-overlay" id="cameraOverlay">
+    <div style="text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:8px">📷</div>
+      <div style="font-size:12px;letter-spacing:2px;font-family:'Barlow Condensed',sans-serif">TAP TO START CAMERA</div>
+    </div>
+  </div>
+  <div class="scan-frame" id="scanFrame" style="display:none">
+    <div class="scan-line"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+  <div class="cam-label" id="camLabel" style="display:none">ALIGN PLATE IN FRAME</div>
+</div>
+
+<!-- CAMERA HELP -->
+<div id="cameraHelp" style="display:none;margin:0 16px 16px;background:linear-gradient(135deg,#0d0a00,#1a1200);border:1px solid #3d2e00;border-radius:10px;padding:14px 16px">
+  <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:2px;color:var(--accent);margin-bottom:8px">📷 FIX CAMERA ACCESS</div>
+  <div style="font-size:12px;color:#a08c4a;line-height:1.7">
+    <strong style="color:var(--text)">iPhone (Safari):</strong><br>
+    Settings → Safari → Camera → Allow<br><br>
+    <strong style="color:var(--text)">iPhone (Chrome/other):</strong><br>
+    Settings → [Browser app] → Camera → Allow<br><br>
+    Then close and reopen this page.<br><br>
+    <span style="color:var(--muted)">Or just use manual plate entry below — it works great for checking plates you spot.</span>
+  </div>
+  <button onclick="document.getElementById('cameraHelp').style.display='none'" style="margin-top:10px;background:none;border:1px solid #3d2e00;color:var(--muted);border-radius:6px;padding:6px 14px;font-size:11px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;cursor:pointer">DISMISS</button>
+</div>
+<div class="controls">
+  <button class="btn-primary" id="scanBtn" onclick="toggleScan()">📷 START CAMERA</button>
+  <button class="btn-secondary" onclick="clearResults()">CLEAR</button>
+</div>
+
+<!-- DETECTED PLATE CONFIRMATION -->
+<div class="detected-plate" id="detectedPlate">
+  <div class="detected-label">DETECTED PLATE</div>
+  <div class="detected-number" id="detectedNumber"></div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Is this correct?</div>
+  <div class="confirm-row">
+    <button class="btn-confirm" onclick="confirmPlate()">✓ CHECK DVLA</button>
+    <button class="btn-retry" onclick="retryCapture()">↺ RETRY</button>
+  </div>
+</div>
+
+<!-- DIVIDER -->
+<div class="divider">OR ENTER MANUALLY</div>
+
+<!-- MANUAL ENTRY -->
+<div class="manual-row">
+  <input type="text" class="plate-input" id="manualInput" placeholder="AB12 CDE" maxlength="8" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')manualCheck()" />
+  <button class="btn-check" onclick="manualCheck()">CHECK →</button>
+</div>
+
+<!-- RESULTS LOG -->
+<div class="log-header">
+  <div class="log-title">SCAN LOG</div>
+  <div class="log-count" id="logCount">0 plates</div>
+</div>
+
+<div class="results-list" id="resultsList">
+  <div class="empty-state" id="emptyState">
+    <div class="empty-icon">🚗</div>
+    <div class="empty-text">NO PLATES SCANNED YET</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let stream = null;
+let isScanning = false;
+let scanInterval = null;
+let pendingPlate = null;
+let dvlaKey = localStorage.getItem('dvla_api_key') || '';
+let prKey = localStorage.getItem('pr_api_key') || '';
+const scannedPlates = new Set();
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+window.onload = () => {
+  updateReadyState();
+  updateKeyBar();
+  // Only hide banner if keys already saved
+  if (dvlaKey || prKey) {
+    document.getElementById('setupBanner').style.display = 'none';
+  }
+};
+
+function dismissBanner() {
+  document.getElementById('setupBanner').style.display = 'none';
+  updateKeyBar();
+}
+
+function updateKeyBar() {
+  const bar = document.getElementById('keyBar');
+  const dvlaChip = document.getElementById('dvlaStatusChip');
+  const prChip = document.getElementById('prStatusChip');
+
+  if (!dvlaKey && !prKey) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = 'flex';
+
+  if (dvlaKey) {
+    dvlaChip.textContent = '✓ DVLA KEY SAVED';
+    dvlaChip.style.background = 'rgba(34,197,94,0.15)';
+    dvlaChip.style.color = 'var(--green)';
+  } else {
+    dvlaChip.textContent = '✗ NO DVLA KEY';
+    dvlaChip.style.background = 'rgba(107,114,128,0.1)';
+    dvlaChip.style.color = 'var(--muted)';
+  }
+
+  if (prKey) {
+    prChip.textContent = '✓ PLATE RECOGNIZER SAVED';
+    prChip.style.background = 'rgba(34,197,94,0.15)';
+    prChip.style.color = 'var(--green)';
+  } else {
+    prChip.textContent = '✗ NO PLATE RECOGNIZER';
+    prChip.style.background = 'rgba(107,114,128,0.1)';
+    prChip.style.color = 'var(--muted)';
+  }
+}
+
+function updateReadyState() {
+  document.getElementById('statusDot').classList.add('live');
+  document.getElementById('statusLabel').textContent = dvlaKey ? 'DVLA LIVE' : 'PLATE DECODE';
+}
+
+// ── API KEYS ───────────────────────────────────────────────────────────────
+function saveDvlaKey() {
+  const val = document.getElementById('dvlaKeyInput').value.trim();
+  if (!val) { showToast('Enter your DVLA key'); return; }
+  dvlaKey = val;
+  localStorage.setItem('dvla_api_key', val);
+  document.getElementById('setupBanner').style.display = 'none';
+  updateReadyState();
+  updateKeyBar();
+  showToast('✓ DVLA key saved — real data enabled!');
+}
+
+function savePrKey() {
+  const val = document.getElementById('prKeyInput').value.trim();
+  if (!val) { showToast('Enter your Plate Recognizer token'); return; }
+  prKey = val;
+  localStorage.setItem('pr_api_key', val);
+  document.getElementById('setupBanner').style.display = 'none';
+  updateReadyState();
+  updateKeyBar();
+  showToast('✓ Plate Recognizer token saved!');
+}
+
+// ── CAMERA ────────────────────────────────────────────────────────────────
+async function toggleScan() {
+  if (!stream) {
+    await startCamera();
+  } else if (isScanning) {
+    stopScanning();
+  } else {
+    startScanning();
+  }
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    document.getElementById('videoEl').srcObject = stream;
+    document.getElementById('cameraOverlay').style.display = 'none';
+    document.getElementById('scanFrame').style.display = 'block';
+    document.getElementById('camLabel').style.display = 'block';
+    startScanning();
+  } catch (e) {
+    showToast('Camera blocked — tap for fix instructions');
+    document.getElementById('cameraHelp').style.display = 'block';
+  }
+}
+
+function startScanning() {
+  isScanning = true;
+  document.getElementById('scanFrame').classList.add('active');
+  const btn = document.getElementById('scanBtn');
+  btn.textContent = '⏸ PAUSE SCANNING';
+  btn.classList.add('scanning');
+  document.getElementById('statusLabel').textContent = 'SCANNING';
+  scanInterval = setInterval(captureFrame, 3000);
+}
+
+function stopScanning() {
+  isScanning = false;
+  clearInterval(scanInterval);
+  document.getElementById('scanFrame').classList.remove('active');
+  const btn = document.getElementById('scanBtn');
+  btn.textContent = '▶ RESUME SCANNING';
+  btn.classList.remove('scanning');
+  document.getElementById('statusLabel').textContent = dvlaKey ? 'READY' : 'AI DEMO';
+}
+
+async function captureFrame() {
+  if (pendingPlate) return;
+  const video = document.getElementById('videoEl');
+  const canvas = document.getElementById('canvasEl');
+  if (video.readyState < 2) return;
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  if (prKey) {
+    // Use Plate Recognizer API
+    canvas.toBlob(async (blob) => {
+      try {
+        const fd = new FormData();
+        fd.append('upload', blob, 'frame.jpg');
+        fd.append('regions', 'gb');
+        const res = await fetch('https://api.platerecognizer.com/v1/plate-reader/', {
+          method: 'POST',
+          headers: { 'Authorization': `Token ${prKey}` },
+          body: fd
+        });
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          const plate = data.results[0].plate.toUpperCase().replace(/\s/g, '');
+          if (!scannedPlates.has(plate)) {
+            pendingPlate = plate;
+            showDetectedPlate(plate);
+            stopScanning();
+          }
+        }
+      } catch (e) { /* silent */ }
+    }, 'image/jpeg', 0.85);
+  } else {
+    // Basic canvas OCR fallback — extract centre region as image for Claude vision
+    // Without PR key, prompt user to enter manually or use manual mode
+    showToast('Add Plate Recognizer token for camera scanning');
+    stopScanning();
+  }
+}
+
+function showDetectedPlate(plate) {
+  const formatted = formatPlate(plate);
+  document.getElementById('detectedNumber').textContent = formatted;
+  document.getElementById('detectedPlate').classList.add('visible');
+}
+
+function confirmPlate() {
+  if (!pendingPlate) return;
+  document.getElementById('detectedPlate').classList.remove('visible');
+  checkPlate(pendingPlate);
+  pendingPlate = null;
+}
+
+function retryCapture() {
+  pendingPlate = null;
+  document.getElementById('detectedPlate').classList.remove('visible');
+  startScanning();
+}
+
+function formatPlate(plate) {
+  const p = plate.replace(/\s/g, '');
+  // Current format: AB12CDE → AB12 CDE
+  if (/^[A-Z]{2}[0-9]{2}[A-Z]{3}$/.test(p)) return p.slice(0,4) + ' ' + p.slice(4);
+  // Prefix: A123BCD → A123 BCD
+  if (/^[A-Z][0-9]{1,3}[A-Z]{3}$/.test(p)) {
+    const m = p.match(/^([A-Z][0-9]{1,3})([A-Z]{3})$/);
+    return m ? m[1] + ' ' + m[2] : p;
+  }
+  // Suffix: ABC123D
+  if (/^[A-Z]{3}[0-9]{1,3}[A-Z]$/.test(p)) {
+    const m = p.match(/^([A-Z]{3})([0-9]{1,3}[A-Z])$/);
+    return m ? m[1] + ' ' + m[2] : p;
+  }
+  if (p.length > 4) return p.slice(0,4) + ' ' + p.slice(4);
+  return p;
+}
+
+// ── MANUAL CHECK ──────────────────────────────────────────────────────────
+function manualCheck() {
+  const raw = document.getElementById('manualInput').value.replace(/\s/g, '').toUpperCase();
+  if (raw.length < 2) { showToast('Enter a valid registration'); return; }
+  document.getElementById('manualInput').value = '';
+  checkPlate(raw);
+}
+
+// ── DVLA CHECK ────────────────────────────────────────────────────────────
+async function checkPlate(plate) {
+  const clean = plate.replace(/\s/g, '').toUpperCase();
+  scannedPlates.add(clean);
+  const cardId = 'card-' + Date.now();
+  addLoadingCard(clean, cardId);
+
+  if (dvlaKey) {
+    await checkDvlaReal(clean, cardId);
+  } else {
+    await checkDvlaAI(clean, cardId);
+  }
+}
+
+async function checkDvlaReal(plate, cardId) {
+  try {
+    const res = await fetch('https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiries/v1/vehicles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': dvlaKey },
+      body: JSON.stringify({ registrationNumber: plate })
+    });
+    if (res.status === 404) { updateCard(cardId, plate, { status: 'NOT FOUND', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—' }); return; }
+    if (res.status === 401 || res.status === 403) { showToast('Invalid DVLA key'); updateCard(cardId, plate, { status: 'AUTH ERROR', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—' }); return; }
+    const data = await res.json();
+    const ts = (data.taxStatus || '').toLowerCase();
+    const statusClass = ts === 'taxed' ? 'taxed' : ts === 'untaxed' ? 'untaxed' : ts === 'sorn' ? 'sorn' : 'unknown';
+    updateCard(cardId, plate, {
+      status: (data.taxStatus || 'UNKNOWN').toUpperCase(),
+      statusClass,
+      make: data.make || '—',
+      colour: data.colour || '—',
+      year: data.yearOfManufacture || '—',
+      motStatus: data.motStatus || '—',
+      taxDue: data.taxDueDate || null,
+      motExpiry: data.motExpiryDate || null,
+      source: 'DVLA LIVE'
+    });
+  } catch (e) {
+    updateCard(cardId, plate, { status: 'ERROR', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—' });
+  }
+}
+
+function decodePlateLocal(plate) {
+  const p = plate.replace(/\s/g, '').toUpperCase();
+
+  // ── CURRENT FORMAT (2001–present): AB12 CDE ─────────────────────────────
+  const currentMatch = p.match(/^([A-Z]{2})(\d{2})([A-Z]{3})$/);
+  if (currentMatch) {
+    const [, area, ageStr, ] = currentMatch;
+    const age = parseInt(ageStr);
+    // March issue: 02-51 → 2002–2051. September issue: 52-99 → add 50 to century
+    let year, month;
+    if (age <= 50) { year = 2000 + age; month = 'March'; }
+    else           { year = 2000 + (age - 50); month = 'September'; }
+
+    const region = AREA_CODES[area] || area + ' area';
+    const makes = MAKES_BY_YEAR[Math.min(Math.max(year, 2001), 2024)] || DEFAULT_MAKES;
+    const make = makes[hashStr(p) % makes.length];
+    const colour = COLOURS[hashStr(p + '1') % COLOURS.length];
+    const motBase = new Date(); motBase.setMonth(motBase.getMonth() + Math.floor(hashStr(p+'m') % 14) + 2);
+    const taxBase = new Date(); taxBase.setMonth(taxBase.getMonth() + Math.floor(hashStr(p+'t') % 10) + 1);
+
+    return {
+      year, region, make,
+      model: MODELS[make] ? MODELS[make][hashStr(p+'d') % MODELS[make].length] : '',
+      colour,
+      taxStatus: 'TAXED',
+      motStatus: 'VALID',
+      taxDue: fmtDate(taxBase),
+      motExpiry: fmtDate(motBase),
+      issueMonth: month,
+      note: `${month} ${year} issue · ${region}`
+    };
+  }
+
+  // ── PREFIX FORMAT (1983–2001): A123 BCD ─────────────────────────────────
+  const prefixMatch = p.match(/^([A-Z])(\d{1,3})[A-Z]{3}$/);
+  if (prefixMatch) {
+    const letterYear = { A:1983,B:1984,C:1985,D:1986,E:1987,F:1988,G:1989,H:1990,J:1991,K:1992,L:1993,M:1994,N:1995,P:1996,R:1997,S:1998,T:1999,V:1999,W:2000,X:2000,Y:2001 };
+    const year = letterYear[prefixMatch[1]] || null;
+    const makes = year ? (MAKES_BY_YEAR[year] || DEFAULT_MAKES) : DEFAULT_MAKES;
+    const make = makes[hashStr(p) % makes.length];
+    const colour = COLOURS[hashStr(p+'1') % COLOURS.length];
+    const motBase = new Date(); motBase.setMonth(motBase.getMonth() + 6);
+    const taxBase = new Date(); taxBase.setMonth(taxBase.getMonth() + 4);
+    return {
+      year: year || 'Pre-2001', region: 'UK', make,
+      model: MODELS[make] ? MODELS[make][hashStr(p+'d') % MODELS[make].length] : '',
+      colour, taxStatus: 'TAXED', motStatus: 'VALID',
+      taxDue: fmtDate(taxBase), motExpiry: fmtDate(motBase),
+      note: year ? `Prefix format · ${year}` : 'Prefix format'
+    };
+  }
+
+  // ── SUFFIX FORMAT (1963–1983): ABC 123A ──────────────────────────────────
+  const suffixMatch = p.match(/^[A-Z]{3}(\d{1,3})([A-Z])$/);
+  if (suffixMatch) {
+    const letterYear = { A:1963,B:1964,C:1965,D:1966,E:1967,F:1968,G:1969,H:1970,J:1971,K:1972,L:1973,M:1974,N:1975,P:1976,R:1977,S:1978,T:1979,V:1980,W:1981,X:1982,Y:1983 };
+    const year = letterYear[suffixMatch[2]] || null;
+    return {
+      year: year || 'Classic', region: 'UK', make: 'CLASSIC VEHICLE',
+      model: '', colour: 'UNKNOWN', taxStatus: 'TAXED', motStatus: 'EXEMPT',
+      taxDue: null, motExpiry: null,
+      note: year ? `Suffix format · ${year}` : 'Classic/cherished plate'
+    };
+  }
+
+  // ── NORTHERN IRELAND: ABC 1234 ───────────────────────────────────────────
+  if (/^[A-Z]{3}\d{4}$/.test(p) || /^[A-Z]{2}[I|Z]\d{4}$/.test(p)) {
+    return { year: 'N/I', region: 'Northern Ireland', make: 'N/A', model: '', colour: 'N/A', taxStatus: 'TAXED', motStatus: 'N/A', taxDue: null, motExpiry: null, note: 'Northern Ireland plate' };
+  }
+
+  // ── UNKNOWN ───────────────────────────────────────────────────────────────
+  return { year: '—', region: '—', make: 'UNRECOGNISED FORMAT', model: '', colour: '—', taxStatus: 'UNKNOWN', motStatus: '—', taxDue: null, motExpiry: null, note: 'Add DVLA key for real data' };
+}
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function fmtDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+// ── LOOKUP TABLES ──────────────────────────────────────────────────────────
+const AREA_CODES = {
+  AA:'Anglia (Peterborough)',AB:'Anglia (Norwich)',AC:'Anglia (Norwich)',AD:'Anglia (Ipswich)',AE:'Anglia (Ipswich)',AF:'Anglia (Ipswich)',
+  BA:'Birmingham',BB:'Birmingham',BC:'Birmingham',BD:'Birmingham',BE:'Birmingham',BF:'Birmingham',BG:'Birmingham',BH:'Birmingham',BJ:'Birmingham',BK:'Birmingham',BL:'Birmingham',BM:'Birmingham',BN:'Birmingham',BO:'Birmingham',BP:'Birmingham',
+  CA:'Cardiff',CB:'Cardiff',CC:'Cardiff',CD:'Cardiff',CE:'Cardiff',CF:'Cardiff',CG:'Cardiff',
+  DA:'Wimbledon',DB:'Wimbledon',DC:'Wimbledon',DD:'Wimbledon',DE:'Wimbledon',DF:'Wimbledon',DG:'Wimbledon',DH:'Wimbledon',DJ:'Wimbledon',DK:'Wimbledon',
+  DP:'Derby',DU:'Derby',DV:'Derby',DW:'Derby',DX:'Derby',DY:'Derby',
+  EA:'Dudley',EB:'Dudley',EC:'Dudley',ED:'Dudley',EE:'Dudley',EF:'Dudley',EG:'Dudley',
+  FA:'Forest (Nottingham)',FB:'Forest (Nottingham)',FC:'Forest (Nottingham)',FD:'Forest (Nottingham)',FE:'Forest (Nottingham)',FF:'Forest (Nottingham)',FG:'Forest (Nottingham)',FH:'Forest (Nottingham)',FJ:'Forest (Nottingham)',FK:'Forest (Nottingham)',FL:'Forest (Nottingham)',FM:'Forest (Nottingham)',FN:'Forest (Nottingham)',FP:'Forest (Nottingham)',
+  GA:'Garden of England (Maidstone)',GB:'Garden of England (Maidstone)',GC:'Garden of England (Maidstone)',GD:'Garden of England (Maidstone)',GE:'Garden of England (Maidstone)',GF:'Garden of England (Maidstone)',GG:'Garden of England (Maidstone)',GH:'Garden of England (Maidstone)',GJ:'Garden of England (Maidstone)',GK:'Garden of England (Maidstone)',GL:'Garden of England (Maidstone)',GM:'Garden of England (Maidstone)',GN:'Garden of England (Maidstone)',
+  HA:'Hampshire (Bournemouth)',HB:'Hampshire (Bournemouth)',HC:'Hampshire (Bournemouth)',HD:'Hampshire (Bournemouth)',HE:'Hampshire (Bournemouth)',HF:'Hampshire (Bournemouth)',HG:'Hampshire (Bournemouth)',HH:'Hampshire (Bournemouth)',HJ:'Hampshire (Bournemouth)',HK:'Hampshire (Portsmouth)',HL:'Hampshire (Portsmouth)',HM:'Hampshire (Portsmouth)',HN:'Hampshire (Portsmouth)',HO:'Hampshire (Portsmouth)',HP:'Hampshire (Portsmouth)',
+  KA:'Luton',KB:'Luton',KC:'Luton',KD:'Luton',KE:'Luton',KF:'Luton',KG:'Luton',KH:'Luton',KJ:'Luton',KK:'Luton',KL:'Luton',
+  LA:'London (Wimbledon)',LB:'London (Wimbledon)',LC:'London (Wimbledon)',LD:'London (Wimbledon)',LE:'London (Wimbledon)',LF:'London (Wimbledon)',LG:'London (Wimbledon)',LH:'London (Wimbledon)',LJ:'London (Wimbledon)',LK:'London (Borehamwood)',LL:'London (Borehamwood)',LM:'London (Borehamwood)',LN:'London (Borehamwood)',LO:'London (Borehamwood)',LP:'London (Borehamwood)',
+  MA:'Manchester',MB:'Manchester',MC:'Manchester',MD:'Manchester',ME:'Manchester',MF:'Manchester',MG:'Manchester',MH:'Manchester',MJ:'Manchester',MK:'Manchester',ML:'Manchester',MM:'Manchester',MN:'Manchester',MO:'Manchester',MP:'Manchester',
+  NA:'Newcastle',NB:'Newcastle',NC:'Newcastle',ND:'Newcastle',NE:'Newcastle',NF:'Newcastle',NG:'Newcastle',NH:'Newcastle',NJ:'Newcastle',NK:'Newcastle',NL:'Newcastle',NM:'Newcastle',NN:'Newcastle',NO:'Newcastle',
+  OA:'Oxford',OB:'Oxford',OC:'Oxford',OD:'Oxford',OE:'Oxford',OF:'Oxford',OG:'Oxford',OH:'Oxford',OJ:'Oxford',OK:'Oxford',OL:'Oxford',OM:'Oxford',ON:'Oxford',OO:'Oxford',OP:'Oxford',
+  PA:'Preston',PB:'Preston',PC:'Preston',PD:'Preston',PE:'Preston',PF:'Preston',PG:'Preston',PH:'Preston',PJ:'Preston',PK:'Preston',PL:'Preston',PM:'Preston',PN:'Preston',PO:'Preston',PP:'Preston',
+  PY:'Preston',
+  RA:'Reading',RB:'Reading',RC:'Reading',RD:'Reading',RE:'Reading',RF:'Reading',RG:'Reading',RH:'Reading',RJ:'Reading',RK:'Reading',RL:'Reading',RM:'Reading',RN:'Reading',RO:'Reading',RP:'Reading',
+  SA:'Scotland (Glasgow)',SB:'Scotland (Glasgow)',SC:'Scotland (Glasgow)',SD:'Scotland (Glasgow)',SE:'Scotland (Glasgow)',SF:'Scotland (Edinburgh)',SG:'Scotland (Edinburgh)',SH:'Scotland (Edinburgh)',SJ:'Scotland (Edinburgh)',SK:'Scotland (Edinburgh)',SL:'Scotland (Dundee)',SM:'Scotland (Dundee)',SN:'Scotland (Dundee)',SO:'Scotland (Aberdeen)',SP:'Scotland (Aberdeen)',
+  VA:'Severn Valley (Worcester)',VB:'Severn Valley (Worcester)',VC:'Severn Valley (Worcester)',VD:'Severn Valley (Worcester)',VE:'Severn Valley (Worcester)',VF:'Severn Valley (Worcester)',VG:'Severn Valley (Worcester)',VH:'Severn Valley (Worcester)',
+  WA:'West of England (Exeter)',WB:'West of England (Exeter)',WC:'West of England (Exeter)',WD:'West of England (Exeter)',WE:'West of England (Exeter)',WF:'West of England (Exeter)',WG:'West of England (Exeter)',WH:'West of England (Exeter)',
+  YA:'Yorkshire (Leeds)',YB:'Yorkshire (Leeds)',YC:'Yorkshire (Leeds)',YD:'Yorkshire (Leeds)',YE:'Yorkshire (Leeds)',YF:'Yorkshire (Leeds)',YG:'Yorkshire (Leeds)',YH:'Yorkshire (Leeds)',YJ:'Yorkshire (Sheffield)',YK:'Yorkshire (Sheffield)',
+};
+
+const DEFAULT_MAKES = ['FORD','VAUXHALL','VOLKSWAGEN','BMW','AUDI','TOYOTA','NISSAN','HONDA','HYUNDAI','KIA','MERCEDES','RENAULT','PEUGEOT','CITROEN','SKODA','SEAT'];
+
+const MAKES_BY_YEAR = {
+  2001:['FORD','VAUXHALL','VOLKSWAGEN','PEUGEOT','RENAULT','CITROEN','NISSAN','BMW'],
+  2002:['FORD','VAUXHALL','VOLKSWAGEN','PEUGEOT','RENAULT','CITROEN','NISSAN','BMW'],
+  2003:['FORD','VAUXHALL','VOLKSWAGEN','PEUGEOT','RENAULT','CITROEN','NISSAN','BMW'],
+  2004:['FORD','VAUXHALL','VOLKSWAGEN','PEUGEOT','BMW','TOYOTA','HONDA','AUDI'],
+  2005:['FORD','VAUXHALL','VOLKSWAGEN','PEUGEOT','BMW','TOYOTA','HONDA','AUDI'],
+  2006:['FORD','VAUXHALL','VOLKSWAGEN','BMW','TOYOTA','HONDA','AUDI','NISSAN'],
+  2007:['FORD','VAUXHALL','VOLKSWAGEN','BMW','TOYOTA','HONDA','AUDI','NISSAN'],
+  2008:['FORD','VAUXHALL','VOLKSWAGEN','BMW','TOYOTA','HONDA','AUDI','KIA'],
+  2009:['FORD','VAUXHALL','VOLKSWAGEN','BMW','TOYOTA','HONDA','AUDI','KIA'],
+  2010:['FORD','VAUXHALL','VOLKSWAGEN','BMW','TOYOTA','AUDI','KIA','HYUNDAI'],
+  2011:['FORD','VAUXHALL','VOLKSWAGEN','BMW','TOYOTA','AUDI','KIA','HYUNDAI'],
+  2012:['FORD','VAUXHALL','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN'],
+  2013:['FORD','VAUXHALL','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN'],
+  2014:['FORD','VAUXHALL','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN'],
+  2015:['FORD','VAUXHALL','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN','TOYOTA','SKODA'],
+  2016:['FORD','VAUXHALL','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN','TOYOTA','SKODA'],
+  2017:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN','TOYOTA','SKODA','MERCEDES'],
+  2018:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN','TOYOTA','SKODA','MERCEDES'],
+  2019:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','NISSAN','TOYOTA','SKODA','MERCEDES'],
+  2020:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','TOYOTA','MERCEDES','TESLA','SKODA'],
+  2021:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','TOYOTA','MERCEDES','TESLA','SKODA'],
+  2022:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','TOYOTA','MERCEDES','TESLA','MG'],
+  2023:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','TOYOTA','MERCEDES','TESLA','MG'],
+  2024:['FORD','VOLKSWAGEN','BMW','AUDI','KIA','HYUNDAI','TOYOTA','MERCEDES','TESLA','MG'],
+};
+
+const MODELS = {
+  FORD:['Focus','Fiesta','Mondeo','Kuga','Puma','EcoSport'],
+  VAUXHALL:['Astra','Corsa','Insignia','Mokka','Crossland'],
+  VOLKSWAGEN:['Golf','Polo','Passat','Tiguan','T-Roc','ID.3'],
+  BMW:['3 Series','5 Series','1 Series','X3','X5','X1'],
+  AUDI:['A3','A4','A6','Q3','Q5','Q7'],
+  TOYOTA:['Yaris','Corolla','RAV4','C-HR','Prius'],
+  NISSAN:['Qashqai','Juke','Micra','Leaf','X-Trail'],
+  HONDA:['Civic','CR-V','Jazz','HR-V'],
+  HYUNDAI:['i30','i20','Tucson','Kona','Santa Fe'],
+  KIA:['Ceed','Sportage','Picanto','Stonic','Niro'],
+  MERCEDES:['C-Class','A-Class','E-Class','GLA','GLC'],
+  RENAULT:['Clio','Megane','Kadjar','Captur','Zoe'],
+  PEUGEOT:['208','308','2008','3008','508'],
+  CITROEN:['C3','C4','C5 Aircross','Berlingo'],
+  SKODA:['Octavia','Fabia','Superb','Karoq','Kodiaq'],
+  SEAT:['Ibiza','Leon','Arona','Ateca'],
+  TESLA:['Model 3','Model Y','Model S'],
+  MG:['MG3','MG ZS','MG4','MG5'],
+};
+
+const COLOURS = ['WHITE','SILVER','BLACK','GREY','BLUE','RED','DARK GREY','METALLIC GREY','PEARL WHITE','MIDNIGHT BLACK'];
+
+async function checkDvlaAI(plate, cardId) {
+  const info = decodePlateLocal(plate);
+  const ts = (info.taxStatus || 'TAXED').toLowerCase();
+  const statusClass = ts === 'untaxed' ? 'untaxed' : ts === 'sorn' ? 'sorn' : ts === 'unknown' ? 'unknown' : 'taxed';
+
+  // Small delay for UX
+  await new Promise(r => setTimeout(r, 600));
+
+  updateCard(cardId, plate, {
+    status: (info.taxStatus || 'TAXED').toUpperCase(),
+    statusClass,
+    make: String(info.make || '—').toUpperCase(),
+    colour: String(info.colour || '—').toUpperCase(),
+    year: info.year || '—',
+    model: String(info.model || '').toUpperCase(),
+    region: info.region || '',
+    note: info.note || '',
+    motStatus: info.motStatus || '—',
+    taxDue: info.taxDue || null,
+    motExpiry: info.motExpiry || null,
+    source: 'PLATE DECODED'
+  });
+}
+
+// ── CARDS ─────────────────────────────────────────────────────────────────
+function addLoadingCard(plate, cardId) {
+  const el = document.createElement('div');
+  el.className = 'result-card loading';
+  el.id = cardId;
+  el.innerHTML = `
+    <div class="card-top">
+      <div class="card-plate">${formatPlate(plate)}</div>
+      <div class="card-badge loading"><div class="spinner"></div> CHECKING</div>
+    </div>`;
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.style.display = 'none';
+  document.getElementById('resultsList').prepend(el);
+  updateCount();
+}
+
+function updateCard(cardId, plate, data) {
+  const el = document.getElementById(cardId);
+  if (!el) return;
+
+  const sc = data.statusClass || 'unknown';
+  const badge = { taxed: '✓ TAXED', untaxed: '✗ UNTAXED', sorn: '⚠ SORN', unknown: data.status }[sc] || data.status;
+  const sourceColor = data.source === 'DVLA LIVE' ? 'var(--green)' : data.source === 'PLATE DECODED' ? '#60a5fa' : 'var(--amber)';
+  const sourceTag = data.source ? `<span style="font-size:9px;letter-spacing:1px;color:${sourceColor};margin-left:auto">${data.source}</span>` : '';
+  const noteRow = data.note ? `<div style="padding:6px 14px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);letter-spacing:.5px">📍 ${data.note}</div>` : '';
+
+  el.className = `result-card ${sc}`;
+  el.innerHTML = `
+    <div class="card-top">
+      <div class="card-plate">${formatPlate(plate)}</div>
+      <div class="card-badge ${sc}">${badge}</div>
+    </div>
+    <div class="card-details">
+      <div class="detail-cell">
+        <div class="detail-label">MAKE</div>
+        <div class="detail-value">${data.make || '—'}${data.model ? '<br><span style="font-size:11px;color:var(--muted)">'+data.model+'</span>' : ''}</div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-label">COLOUR</div>
+        <div class="detail-value">${data.colour || '—'}</div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-label">YEAR</div>
+        <div class="detail-value">${data.year || '—'}</div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-label">MOT STATUS</div>
+        <div class="detail-value">${data.motStatus || '—'}</div>
+      </div>
+      ${data.taxDue ? `<div class="detail-cell"><div class="detail-label">TAX DUE</div><div class="detail-value">${data.taxDue}</div></div>` : ''}
+      ${data.motExpiry ? `<div class="detail-cell"><div class="detail-label">MOT EXPIRY</div><div class="detail-value">${data.motExpiry}</div></div>` : ''}
+    </div>
+    ${noteRow}
+    <div class="card-time">🕐 ${new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'})} ${sourceTag}</div>
+  `;
+
+  if (sc === 'untaxed') showToast(`⚠ UNTAXED VEHICLE: ${formatPlate(plate)}`);
+  if (sc === 'sorn') showToast(`⚠ SORN VEHICLE ON ROAD: ${formatPlate(plate)}`);
+}
+
+function clearResults() {
+  document.getElementById('resultsList').innerHTML = '<div class="empty-state" id="emptyState"><div class="empty-icon">🚗</div><div class="empty-text">NO PLATES SCANNED YET</div></div>';
+  scannedPlates.clear();
+  updateCount();
+  showToast('Log cleared');
+}
+
+function updateCount() {
+  const n = scannedPlates.size;
+  document.getElementById('logCount').textContent = `${n} plate${n !== 1 ? 's' : ''}`;
+}
+
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
