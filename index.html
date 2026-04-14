@@ -897,31 +897,59 @@ async function checkPlate(plate) {
 }
 
 async function checkDvlaReal(plate, cardId) {
-  try {
-    const res = await fetch('https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiries/v1/vehicles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': dvlaKey },
-      body: JSON.stringify({ registrationNumber: plate })
-    });
-    if (res.status === 404) { updateCard(cardId, plate, { status: 'NOT FOUND', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—' }); return; }
-    if (res.status === 401 || res.status === 403) { showToast('Invalid DVLA key'); updateCard(cardId, plate, { status: 'AUTH ERROR', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—' }); return; }
-    const data = await res.json();
-    const ts = (data.taxStatus || '').toLowerCase();
-    const statusClass = ts === 'taxed' ? 'taxed' : ts === 'untaxed' ? 'untaxed' : ts === 'sorn' ? 'sorn' : 'unknown';
-    updateCard(cardId, plate, {
-      status: (data.taxStatus || 'UNKNOWN').toUpperCase(),
-      statusClass,
-      make: data.make || '—',
-      colour: data.colour || '—',
-      year: data.yearOfManufacture || '—',
-      motStatus: data.motStatus || '—',
-      taxDue: data.taxDueDate || null,
-      motExpiry: data.motExpiryDate || null,
-      source: 'DVLA LIVE'
-    });
-  } catch (e) {
-    updateCard(cardId, plate, { status: 'ERROR', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—' });
+  // DVLA API doesn't allow direct browser calls (CORS), so we try via a CORS proxy
+  // then fall back to local plate decode if that also fails
+  const DVLA_URL = 'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiries/v1/vehicles';
+  const PROXIES = [
+    `https://corsproxy.io/?${encodeURIComponent(DVLA_URL)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(DVLA_URL)}`,
+  ];
+
+  for (const url of PROXIES) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': dvlaKey },
+        body: JSON.stringify({ registrationNumber: plate })
+      });
+
+      if (res.status === 404) {
+        updateCard(cardId, plate, { status: 'NOT FOUND', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—', source: 'DVLA LIVE' });
+        return;
+      }
+      if (res.status === 401 || res.status === 403) {
+        showToast('Invalid DVLA key — check your key');
+        updateCard(cardId, plate, { status: 'AUTH ERROR', statusClass: 'unknown', make: '—', colour: '—', year: '—', motStatus: '—', source: 'DVLA LIVE' });
+        return;
+      }
+      if (!res.ok) continue; // try next proxy
+
+      const data = await res.json();
+      if (!data.taxStatus) continue; // unexpected response, try next
+
+      const ts = (data.taxStatus || '').toLowerCase();
+      const statusClass = ts === 'taxed' ? 'taxed' : ts === 'untaxed' ? 'untaxed' : ts === 'sorn' ? 'sorn' : 'unknown';
+      updateCard(cardId, plate, {
+        status: (data.taxStatus || 'UNKNOWN').toUpperCase(),
+        statusClass,
+        make: data.make || '—',
+        colour: data.colour || '—',
+        year: data.yearOfManufacture || '—',
+        motStatus: data.motStatus || '—',
+        taxDue: data.taxDueDate || null,
+        motExpiry: data.motExpiryDate || null,
+        source: 'DVLA LIVE'
+      });
+      return; // success — stop trying proxies
+
+    } catch (e) {
+      continue; // try next proxy
+    }
   }
+
+  // All proxies failed — fall back to local plate decode but show DVLA failed warning
+  showToast('DVLA unreachable — showing plate decode');
+  await checkDvlaAI(plate, cardId);
 }
 
 function decodePlateLocal(plate) {
