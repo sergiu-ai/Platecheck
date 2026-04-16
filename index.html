@@ -138,13 +138,14 @@
   /* CAMERA SECTION */
   .camera-section {
     position: relative;
-    margin: 0 16px 16px;
-    border-radius: 12px;
+    margin: 0 0 16px;
+    border-radius: 0;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
     background: #060709;
-    aspect-ratio: 16/9;
-    max-height: 260px;
+    aspect-ratio: 4/3;
+    max-height: 420px;
   }
 
   #videoEl {
@@ -166,14 +167,10 @@
 
   .scan-frame {
     position: absolute;
-    width: 70%;
-    height: 38%;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    inset: 8px;
     border: 2px solid var(--accent);
-    border-radius: 6px;
-    box-shadow: 0 0 0 2000px rgba(0,0,0,0.45);
+    border-radius: 8px;
+    box-shadow: none;
   }
 
   .scan-line {
@@ -783,7 +780,7 @@ function startScanning() {
   btn.textContent = '⏸ PAUSE SCANNING';
   btn.classList.add('scanning');
   document.getElementById('statusLabel').textContent = 'SCANNING';
-  scanInterval = setInterval(captureFrame, 3000);
+  scanInterval = setInterval(captureFrame, 2000);
 }
 
 function stopScanning() {
@@ -797,7 +794,6 @@ function stopScanning() {
 }
 
 async function captureFrame() {
-  if (pendingPlate) return;
   const video = document.getElementById('videoEl');
   const canvas = document.getElementById('canvasEl');
   if (video.readyState < 2) return;
@@ -807,12 +803,12 @@ async function captureFrame() {
   canvas.getContext('2d').drawImage(video, 0, 0);
 
   if (prKey) {
-    // Use Plate Recognizer API
     canvas.toBlob(async (blob) => {
       try {
         const fd = new FormData();
         fd.append('upload', blob, 'frame.jpg');
         fd.append('regions', 'gb');
+        fd.append('config', JSON.stringify({ detection_rule: 'strict' }));
         const res = await fetch('https://api.platerecognizer.com/v1/plate-reader/', {
           method: 'POST',
           headers: { 'Authorization': `Token ${prKey}` },
@@ -820,18 +816,24 @@ async function captureFrame() {
         });
         const data = await res.json();
         if (data.results && data.results.length > 0) {
-          const plate = data.results[0].plate.toUpperCase().replace(/\s/g, '');
-          if (!scannedPlates.has(plate)) {
-            pendingPlate = plate;
-            showDetectedPlate(plate);
-            stopScanning();
+          // Process ALL detected plates in the frame
+          let newPlatesFound = 0;
+          for (const result of data.results) {
+            if (result.score < 0.5) continue; // skip low confidence
+            const plate = result.plate.toUpperCase().replace(/\s/g, '');
+            if (!scannedPlates.has(plate) && plate.length >= 4) {
+              newPlatesFound++;
+              // Check each new plate directly without confirmation step
+              checkPlate(plate);
+            }
+          }
+          if (newPlatesFound > 0) {
+            showToast(`📷 ${newPlatesFound} plate${newPlatesFound > 1 ? 's' : ''} detected`);
           }
         }
       } catch (e) { /* silent */ }
-    }, 'image/jpeg', 0.85);
+    }, 'image/jpeg', 0.9);
   } else {
-    // Basic canvas OCR fallback — extract centre region as image for Claude vision
-    // Without PR key, prompt user to enter manually or use manual mode
     showToast('Add Plate Recognizer token for camera scanning');
     stopScanning();
   }
